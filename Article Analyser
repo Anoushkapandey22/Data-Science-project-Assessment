@@ -1,0 +1,77 @@
+!pip install gradio
+!pip install requests beautifulsoup4 spacy textblob
+!python -m spacy download en_core_web_sm
+
+import requests
+from bs4 import BeautifulSoup
+import spacy
+from textblob import TextBlob
+import gradio as gr
+
+# Task 1: Data Scraping
+def scrape_article(url):
+    """Retrieve the main content of a news article from the given URL."""
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        paragraphs = soup.find_all('p')
+        article_text = ' '.join([p.get_text() for p in paragraphs])
+        return article_text
+    except Exception as e:
+        return f"Error fetching article: {str(e)}"
+
+# Task 2: Named Entity Recognition (NER)
+def extract_entities(text):
+    """Extract PERSON and ORG entities from the text using spaCy."""
+    nlp = spacy.load("en_core_web_sm")  # Load pre-trained spaCy model
+    doc = nlp(text)
+    persons = [ent.text for ent in doc.ents if ent.label_ == "PERSON"]
+    orgs = [ent.text for ent in doc.ents if ent.label_ == "ORG"]
+    return {"PERSON": persons, "ORG": orgs}
+
+# Task 3: Sentiment Analysis
+def analyze_sentiment(text):
+    """Analyze sentiment using TextBlob."""
+    blob = TextBlob(text)
+    polarity = blob.sentiment.polarity
+    if polarity > 0:
+        return "Positive"
+    elif polarity < 0:
+        return "Negative"
+    else:
+        return "Neutral"
+
+# Combine functionality into a single function
+def analyze_article(url):
+    """Process an article by scraping, extracting entities, and analyzing sentiment."""
+    article_text = scrape_article(url)
+    if article_text.startswith("Error"):
+        return article_text, None, None
+
+    entities = extract_entities(article_text)
+    sentiment = analyze_sentiment(article_text)
+
+    return article_text[:500] + "...", entities, sentiment  # Limit article preview to 500 chars
+
+# Gradio Interface
+def gradio_interface(url):
+    article, entities, sentiment = analyze_article(url)
+    if "Error" in article:
+        return article, "", ""
+    return article, f"Persons: {entities['PERSON']}\nOrganizations: {entities['ORG']}", sentiment
+
+# Gradio Application
+iface = gr.Interface(
+    fn=gradio_interface,
+    inputs=gr.Textbox(label="News Article URL"),
+    outputs=[
+        gr.Textbox(label="Article Text"),
+        gr.Textbox(label="Extracted Entities"),
+        gr.Textbox(label="Sentiment"),
+    ],
+    title="News Article Analyzer",
+    description="Enter a news article URL to analyze its content, extract entities, and determine sentiment.",
+)
+
+iface.launch()
